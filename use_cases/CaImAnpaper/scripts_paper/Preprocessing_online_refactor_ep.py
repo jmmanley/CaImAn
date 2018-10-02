@@ -32,6 +32,7 @@ import cv2
 import glob
 import os
 import sys
+import time
 from caiman.base.rois import detect_duplicates_and_subsets
 
 from builtins import str
@@ -309,13 +310,13 @@ if preprocessing_from_scratch:
             thresh_CNN_noisy = global_params['thresh_CNN_noisy']
         
         thresh_CNN_noisy = 0.65
-        min_SNR = 0.825
+        min_SNR = 0.8 #0.825
         #thresh_CNN_noisy = CNN_thr[ID[0]]
         try:
             min_num_trial = params_movie[ind_dataset]['min_num_trial']
         except:
             min_num_trial = global_params['min_num_trial']
-        min_num_trial = 9
+        min_num_trial = 10 #9
         #T1 = params_movie[ind_dataset]['T1'] * len(fls) * epochs  
             # total length of all files (if not known use a large number, then truncate at the end)
         # minibatch_length = int(global_params['batch_length_dt']*params_movie[ind_dataset]['fr']*params_movie[ind_dataset]['decay_time'])
@@ -349,8 +350,10 @@ if preprocessing_from_scratch:
         opts = cnmf.params.CNMFParams(params_dict=params_dict)
 
         if not reload:
+            t1 = time.time()
             cnm = cnmf.online_cnmf.OnACID(params=opts)
             cnm.fit_online()
+            t_el = time.time() - t1
             #cnm.save(fls[0][:-4]+'hdf5')
 
         else:

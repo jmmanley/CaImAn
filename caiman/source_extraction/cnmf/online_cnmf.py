@@ -28,7 +28,7 @@ from scipy.ndimage import percentile_filter
 from scipy.ndimage.filters import gaussian_filter
 from scipy.sparse import coo_matrix, csc_matrix, spdiags
 from scipy.stats import norm
-from skimage.feature import peak_local_max
+#from skimage.feature import peak_local_max
 from sklearn.decomposition import NMF
 from sklearn.preprocessing import normalize
 
@@ -39,7 +39,7 @@ from .estimates import Estimates
 from .initialization import imblur, initialize_components, hals
 from .oasis import OASIS
 from .params import CNMFParams
-from .utilities import update_order, get_file_size
+from .utilities import update_order, get_file_size, peak_local_max
 from ... import mmapping
 from ...components_evaluation import compute_event_exceptionality
 from ...motion_correction import motion_correct_iteration_fast, tile_and_correct
@@ -203,8 +203,7 @@ class OnACID(object):
             min(self.params.get('online', 'init_batch'), self.params.get('online', 'minibatch_shape')) - 1), 0)
         self.estimates.groups = list(map(list, update_order(self.estimates.Ab)[0]))
         # self.update_counter = np.zeros(self.N)
-        self.update_counter = .5**(-np.linspace(0, 1,
-                                                self.N, dtype=np.float32))
+        self.update_counter = 2**(np.linspace(0, 1, self.N, dtype=np.float32))
         self.time_neuron_added = []
         for nneeuu in range(self.N):
             self.time_neuron_added.append((nneeuu, self.params.get('online', 'init_batch')))
@@ -493,7 +492,7 @@ class OnACID(object):
                 candidates = np.where(self.update_counter <= 1)[0]
                 if len(candidates):
                     self.comp_upd.append(len(candidates))
-                    indicator_components = candidates[:self.N // mbs + 1]
+                    indicator_components = candidates #candidates[:self.N // mbs + 1]
                     self.update_counter[indicator_components] += 1
 
                     if self.params.get('online', 'use_dense'):
@@ -1643,12 +1642,35 @@ def update_num_components(t, sv, Ab, Cf, Yres_buf, Y_buf, rho_buf,
                 np.ix_(*[np.arange(sl.start, sl.stop)
                          for sl in slices_update]), dims, order='C').ravel()
 
-            rho_buf[:, ind_vb] = np.stack([imblur(
-                vb.reshape(dims, order='F')[slices_filter], sig=gSig, siz=gSiz,
-                nDimBlur=len(dims))[tuple([slice(
-                    slices_update[i].start - slices_filter[i].start,
-                    slices_update[i].stop - slices_filter[i].start)
-                    for i in range(len(dims))])].ravel() for vb in Yres_buf])**2
+            if len(dims) == 3:
+                rho_buf[:, ind_vb] = np.stack([imblur(
+                    vb.reshape(dims, order='F')[slices_filter], sig=gSig, siz=gSiz,
+                    nDimBlur=len(dims))[tuple([slice(
+                        slices_update[i].start - slices_filter[i].start,
+                        slices_update[i].stop - slices_filter[i].start)
+                        for i in range(len(dims))])].ravel() for vb in Yres_buf])**2
+            else:
+                # faster than looping over frames:
+                # transform all frames into one, blur all simultaneously, transform back
+                Y_filter = Yres_buf.reshape((-1,) + dims, order='F'
+                                            )[:, slices_filter[0], slices_filter[1]]
+                T, d0, d1 = Y_filter.shape
+                dg = gHalf[0] + d0
+                tmp = np.concatenate((Y_filter, np.zeros((T, gHalf[0], d1), dtype=np.float32)),
+                                     axis=1).reshape(-1, d1)
+                cv2.GaussianBlur(tmp, tuple(gSiz), gSig[0], tmp, gSig[1], cv2.BORDER_CONSTANT)
+                slices = tuple([slice(slices_update[i].start - slices_filter[i].start,
+                                      slices_update[i].stop - slices_filter[i].start)
+                                for i in range(len(dims))])
+                rho_buf[:, ind_vb] = tmp.reshape(T, -1, d1)[
+                    (slice(None),) + slices].reshape(T, -1)**2
+
+#            rho_buf[:, ind_vb] = np.stack([imblur(
+#                vb.reshape(dims, order='F')[slices_filter], sig=gSig, siz=gSiz,
+#                nDimBlur=len(dims))[tuple([slice(
+#                    slices_update[i].start - slices_filter[i].start,
+#                    slices_update[i].stop - slices_filter[i].start)
+#                    for i in range(len(dims))])].ravel() for vb in Yres_buf])**2
 
             sv[ind_vb] = np.sum(rho_buf[:, ind_vb], 0)
 #            sv = np.sum([imblur(vb.reshape(dims,order='F'), sig=gSig, siz=gSiz, nDimBlur=len(dims))**2 for vb in Yres_buf], 0).reshape(-1)
