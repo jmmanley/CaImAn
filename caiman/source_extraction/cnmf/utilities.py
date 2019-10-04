@@ -1030,6 +1030,11 @@ def get_file_size(file_name, var_name_hdf5='mov'):
                 T = int(os.path.getsize(
                     file_name[:-4] + '.sbx') / info['recordsPerBuffer'] / info['sz'][1] * factor / 4 - 1)
                 
+            elif extension == '.fits':
+                import pyfits
+                dims = pyfits.open(file_name)[0].data.shape
+                T = dims[0]
+                dims = dims[1:]
             else:
                 raise Exception('Unknown file type')
             dims = tuple(dims)
