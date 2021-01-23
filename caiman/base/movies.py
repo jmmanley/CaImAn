@@ -1754,6 +1754,10 @@ def load(file_name: Union[str, List[str]],
             else:
                 input_arr = np.array(dataset.sequences[0])[subindices, :, :, :, :].squeeze()
 
+        elif extension == '.fits':
+            import pyfits
+
+            input_arr = pyfits.open(file_name)[0].data
         else:
             raise Exception('Unknown file type')
     else:
